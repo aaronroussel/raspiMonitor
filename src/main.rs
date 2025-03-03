@@ -1,4 +1,5 @@
-use std::{io, process};
+use std::process::{Command, Stdio};
+use std::{fs, io};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
@@ -22,7 +23,7 @@ fn main() -> io::Result<()> {
 pub struct App {
     counter: u8,
     exit: bool,
-    int: u8,
+    temp: f32,
 }
 
 impl App {
@@ -30,6 +31,7 @@ impl App {
         while !self.exit {
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_events()?;
+            self.update_temp();
         }
         Ok(())
     }
@@ -48,22 +50,38 @@ impl App {
         Ok(())
     }
 
-    fn check_temps(&mut self) -> String {
-        let mut output = Command::new("vcgencmd")
+    fn check_temps(&mut self) -> f32 {
+        let output = Command::new("vcgencmd")
             .arg("measure_temp")
-            .stdout()
             .output()
             .expect("Error checking temperature");
         let stdout = String::from_utf8(output.stdout).unwrap();
-        stdout
+        let temp = self.parse_temp_string(stdout);
+        temp
     }
 
-     fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn parse_temp_string(&mut self, temp_string: String) -> f32 {
+        let prefix = "temp=";
+        let suffix = "'C";
+
+        let number_str = &temp_string[prefix.len()..temp_string.len() - suffix.len()];
+        number_str.parse::<f32>().unwrap()
+    }
+
+    fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Left => self.decrement_counter(),
             KeyCode::Right => self.increment_counter(),
             _ => {}
+        }
+    }
+
+    fn update_temp(&mut self) {
+        if (self.is_raspberry_pi_os()) {
+            self.temp = self.check_temps();
+        } else {
+            self.temp = 0.0;
         }
     }
 
@@ -76,10 +94,26 @@ impl App {
     }
 
     fn decrement_counter(&mut self) {
-        if self.counter == 0 {}
-        else {
+        if self.counter == 0 {
+        } else {
             self.counter -= 1;
         }
+    }
+
+    fn is_raspberry_pi_os(&mut self) -> bool {
+        if let Ok(contents) = fs::read_to_string("/proc/device-tree/model") {
+            if contents.contains("Raspberry Pi") {
+                return true;
+            }
+        }
+
+        if let Ok(contents) = fs::read_to_string("/etc/os-release") {
+            if contents.contains("Raspian") || contents.contains("Raspberry Pi OS") {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -93,6 +127,8 @@ impl Widget for &App {
             "<Right>".blue().into(),
             " Quit ".into(),
             "<Q>".blue().bold(),
+            " Temperature: ".into(),
+            self.temp.to_string().red().bold(),
         ]);
         let block = Block::bordered()
             .title(title.centered())
