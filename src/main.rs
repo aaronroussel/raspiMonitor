@@ -65,7 +65,7 @@ impl App {
         let suffix = "'C";
 
         let number_str = &temp_string[prefix.len()..temp_string.len() - suffix.len()];
-        number_str.parse::<f32>().unwrap()
+        number_str.parse::<f32>().expect(number_str)
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
