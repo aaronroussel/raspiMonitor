@@ -64,7 +64,7 @@ impl App {
         let prefix = "temp=";
         let suffix = "'C";
 
-        let number_str = &temp_string[prefix.len()..temp_string.len() - suffix.len()];
+        let number_str = &temp_string[prefix.len()..temp_string.len() - suffix.len() - 1];
         number_str.parse::<f32>().expect(number_str)
     }
 
@@ -78,7 +78,7 @@ impl App {
     }
 
     fn update_temp(&mut self) {
-        if (self.is_raspberry_pi_os()) {
+        if self.is_raspberry_pi_os() {
             self.temp = self.check_temps();
         } else {
             self.temp = 0.0;
