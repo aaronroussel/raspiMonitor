@@ -166,14 +166,11 @@ impl TempData {
     }
 
     fn get_dataset(&self) -> Vec<(f64, f64)> {
-        let mut data_vec: Vec<(f64, f64)> = Vec::new();
-        let mut index: u8 = 0;
-        for data in &self.temp_buffer {
-            let point = (index as f64, data.clone());
-            data_vec.push(point);
-            index = index + 1;
-        }
-        data_vec
+        self.temp_buffer
+            .iter()
+            .enumerate()
+            .map(|(i, &val)| (i as f64, val))
+            .collect()
     }
 }
 
