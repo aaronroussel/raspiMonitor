@@ -1,15 +1,17 @@
 use std::process::{Command, Stdio};
 use std::{fs, io};
 
+use circular_buffer::CircularBuffer;
+
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::Rect,
-    style::Stylize,
-    symbols::border,
+    style::{Color, Modifier, Style, Stylize},
+    symbols::{self, Marker, border},
     text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
+    widgets::{Axis, Block, Chart, Dataset, GraphType, LegendPosition, Paragraph, Widget},
 };
 
 fn main() -> io::Result<()> {
@@ -23,7 +25,8 @@ fn main() -> io::Result<()> {
 pub struct App {
     counter: u8,
     exit: bool,
-    temp: f32,
+    temp: f64,
+    temp_data: TempData,
 }
 
 impl App {
@@ -50,22 +53,22 @@ impl App {
         Ok(())
     }
 
-    fn check_temps(&mut self) -> f32 {
+    fn check_temps(&mut self) -> f64 {
         let output = Command::new("vcgencmd")
             .arg("measure_temp")
             .output()
             .expect("Error checking temperature");
         let stdout = String::from_utf8(output.stdout).unwrap();
-        let temp = self.parse_temp_string(stdout);
+        let temp = self.parse_temp_string(stdout).clone();
         temp
     }
 
-    fn parse_temp_string(&mut self, temp_string: String) -> f32 {
+    fn parse_temp_string(&mut self, temp_string: String) -> f64 {
         let prefix = "temp=";
         let suffix = "'C";
 
         let number_str = &temp_string[prefix.len()..temp_string.len() - suffix.len() - 1];
-        number_str.parse::<f32>().expect(number_str)
+        number_str.parse::<f64>().expect(number_str)
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
@@ -78,11 +81,14 @@ impl App {
     }
 
     fn update_temp(&mut self) {
+        let mut temp: f64 = 0.0;
         if self.is_raspberry_pi_os() {
-            self.temp = self.check_temps();
+            temp = self.check_temps();
+            self.temp = temp;
         } else {
-            self.temp = 0.0;
+            self.temp = temp;
         }
+        self.temp_data.add_data(temp);
     }
 
     fn exit(&mut self) {
@@ -119,30 +125,61 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Counter App ".bold());
-        let instructions = Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().into(),
-            " Quit ".into(),
-            "<Q>".blue().bold(),
-            " Temperature: ".into(),
-            self.temp.to_string().red().bold(),
-        ]);
-        let block = Block::bordered()
-            .title(title.centered())
-            .title_bottom(instructions.centered())
-            .border_set(border::THICK);
+        let temp_graph_block = Block::bordered().title(Line::from(vec!["CPU Temperature".into()]));
 
-        let counter_text = Text::from(vec![Line::from(vec![
-            "Value: ".into(),
-            self.counter.to_string().yellow(),
-        ])]);
+        let data = &self.temp_data.get_dataset()[..];
 
-        Paragraph::new(counter_text)
-            .centered()
-            .block(block)
+        let dataset = Dataset::default()
+            .name("CPU TEMP")
+            .data(data)
+            .marker(symbols::Marker::Braille)
+            .style(Style::default())
+            .graph_type(GraphType::Line);
+
+        let x_axis = Axis::default()
+            .title("")
+            .style(Style::default().white())
+            .bounds([0.0, 100.0]);
+
+        let y_axis = Axis::default()
+            .title("CPU TEMP")
+            .style(Style::default().white())
+            .bounds([0.0, 100.0])
+            .labels(["0.0", "25.0", "50.0", "75.0", "100.0"]);
+
+        let temp_graph = Chart::new(vec![dataset])
+            .block(temp_graph_block)
+            .x_axis(x_axis)
+            .y_axis(y_axis)
             .render(area, buf);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TempData {
+    temp_buffer: CircularBuffer<100, f64>,
+}
+
+impl TempData {
+    fn add_data(&mut self, data: f64) {
+        self.temp_buffer.push_back(data);
+    }
+
+    fn get_dataset(&self) -> Vec<(f64, f64)> {
+        let mut data_vec: Vec<(f64, f64)> = Vec::new();
+        let index: u8 = 0;
+        for data in &self.temp_buffer {
+            let point = (index as f64, data.clone());
+            data_vec.push(point);
+        }
+        data_vec
+    }
+}
+
+impl Default for TempData {
+    fn default() -> Self {
+        Self {
+            temp_buffer: CircularBuffer::<100, f64>::new(),
+        }
     }
 }
