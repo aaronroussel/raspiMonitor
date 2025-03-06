@@ -145,8 +145,10 @@ impl App {
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let temp_graph_block = Block::bordered().title(Line::from(vec![
+            "<".bold().green(),
             "CPU Temperature: ".into(),
             self.temp.to_string().bold().red(),
+            ">".bold().green(),
         ]));
 
         let data = &self.temp_data.get_dataset()[..];
