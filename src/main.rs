@@ -1,4 +1,5 @@
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::Duration;
 use std::{fs, io};
 
 use circular_buffer::CircularBuffer;
@@ -31,10 +32,28 @@ pub struct App {
 
 impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
-        while !self.exit {
-            terminal.draw(|frame| self.draw(frame))?;
-            self.handle_events()?;
+        loop {
+            // If we need to exit, break out of the loop
+            if self.exit {
+                break;
+            }
+
+            // Poll for an event for up to 200 milliseconds
+            if event::poll(Duration::from_millis(200))? {
+                // If there *is* an event, read it
+                match event::read()? {
+                    Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                        self.handle_key_event(key_event);
+                    }
+                    _ => {}
+                };
+            }
+
+            // Update your temperature reading (and push data to the circular buffer)
             self.update_temp();
+
+            // Re-draw the UI
+            terminal.draw(|frame| self.draw(frame))?;
         }
         Ok(())
     }
